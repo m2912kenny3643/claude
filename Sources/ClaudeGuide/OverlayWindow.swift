@@ -41,10 +41,10 @@ struct RingView: View {
         GeometryReader { geo in
             if model.visible {
                 ZStack {
-                    Circle().stroke(Color.orange, lineWidth: 4)
+                    Circle().stroke(Color.claudeOrange, lineWidth: 4)
                         .frame(width: 56, height: 56)
                         .scaleEffect(pulse ? 1.5 : 1).opacity(pulse ? 0.2 : 1)
-                    Circle().fill(Color.orange.opacity(0.25)).frame(width: 40, height: 40)
+                    Circle().fill(Color.claudeOrange.opacity(0.25)).frame(width: 40, height: 40)
                 }
                 .position(x: model.point.x * geo.size.width, y: model.point.y * geo.size.height)
                 .onAppear {

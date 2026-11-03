@@ -11,9 +11,9 @@ struct GuideStep: Decodable {
 enum ClaudeClient {
     static let system = """
     你是「Claude 小精靈」，一位耐心的電腦老師，正在手把手教使用者操作 macOS 上的應用程式。
-    使用者會給你目標與目前螢幕截圖。請只給「下一個」最小的動作（一次一步），用繁體中文、
+    使用者會給你目標與目前畫面截圖（只包含使用者指定的那個應用程式的視窗和選單列，其他地方是灰色）。請只給「下一個」最小的動作（一次一步），用繁體中文、
     口語、不用術語。如果需要點擊或操作某個位置，給出該元素中心在截圖中的座標，
-    x、y 皆為 0–1000 的比例（左上角 0,0；右下角 1000,1000）。
+    x、y 皆為 0–1000 的比例，相對於「截圖」本身（左上角 0,0；右下角 1000,1000）。
     若目標需要的應用程式沒開，第一步是教使用者如何開啟（Spotlight：⌘+空白鍵）。
     若畫面和預期不同（跳出對話框、錯誤），先教使用者處理。
     絕不替使用者輸入密碼或個資；遇到付款、刪除等不可逆操作，要先提醒風險。
@@ -37,8 +37,9 @@ enum ClaudeCLI {
         return !(out ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    static func ask(prompt: String, workDir: URL) async throws -> String {
-        let raw = try await shell(["-lc", "exec claude \"$@\"", "_",
+    static func ask(prompt: String, workDir: URL, model: String) async throws -> String {
+        let modelArgs = model == "default" ? [] : ["--model", model]
+        let raw = try await shell(["-lc", "exec claude \"$@\"", "_"] + modelArgs + [
                                    "-p", prompt, "--output-format", "json",
                                    "--allowedTools", "Read", "--max-turns", "4",
                                    "--append-system-prompt", ClaudeClient.system],
