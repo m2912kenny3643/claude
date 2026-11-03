@@ -53,8 +53,12 @@ enum ScreenCapture {
         rect = rect.intersection(display)
         guard appWindows > 0, !rect.isNull, rect.width > 1, rect.height > 1 else { throw GuideError.noWindow(appName) }
 
-        guard let cg = CGImage(windowListFromArrayScreenBounds: rect, windowArray: ids as CFArray,
-                               imageOption: [.bestResolution]) else { throw GuideError.noWindow(appName) }
+        // CGWindowList API 要的是「直接存放 window ID 數值」的 CFArray，不能用 NSNumber 陣列
+        var raw: [UnsafeRawPointer?] = ids.map { UnsafeRawPointer(bitPattern: UInt($0)) }
+        guard let arr = CFArrayCreate(kCFAllocatorDefault, &raw, raw.count, nil),
+              let cg = CGImage(windowListFromArrayScreenBounds: rect, windowArray: arr,
+                               imageOption: [.bestResolution])
+        else { throw GuideError.captureFailed }
 
         let scale = min(1, maxWidth / CGFloat(cg.width))
         let w = Int(CGFloat(cg.width) * scale), h = Int(CGFloat(cg.height) * scale)
@@ -75,13 +79,14 @@ enum ScreenCapture {
 }
 
 enum GuideError: LocalizedError {
-    case noPermission, noWindow(String), encodeFailed, badResponse(String)
+    case noPermission, noWindow(String), captureFailed, encodeFailed, badResponse(String)
     var errorDescription: String? {
         switch self {
         case .noPermission:
             return "還沒有螢幕錄製權限。請按下方「開啟系統設定」勾選小精靈，然後按「重新啟動」。"
         case .noWindow(let n):
             return "看不到「\(n)」的視窗。請先打開它並讓視窗顯示在畫面上（不要最小化），或在上方改選「整個螢幕」。"
+        case .captureFailed: return "截圖失敗。請確認已授權螢幕錄製（授權後要按「重新啟動」），或換選其他 App。"
         case .encodeFailed: return "截圖編碼失敗"
         case .badResponse(let s): return "Claude 回應無法解析：\(s)"
         }
