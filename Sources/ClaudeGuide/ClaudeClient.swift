@@ -1,16 +1,14 @@
 import Foundation
 
 struct GuideStep: Decodable {
-    var app: String?          // 目前畫面上的應用程式
-    var instruction: String   // 白話的下一步說明
-    var x: Double?            // 目標位置，0–1000，左上為原點
+    var app: String?
+    var instruction: String
+    var x: Double?   // 0–1000，左上為原點
     var y: Double?
-    var done: Bool            // 目標是否已完成
+    var done: Bool
 }
 
-struct ClaudeClient {
-    static let model = "claude-sonnet-5-5"
-
+enum ClaudeClient {
     static let system = """
     你是「Claude 小精靈」，一位耐心的電腦老師，正在手把手教使用者操作 macOS 上的應用程式。
     使用者會給你目標與目前螢幕截圖。請只給「下一個」最小的動作（一次一步），用繁體中文、
@@ -23,61 +21,45 @@ struct ClaudeClient {
     {"app": "目前的應用程式名稱", "instruction": "下一步說明", "x": 數字或null, "y": 數字或null, "done": true或false}
     """
 
-    /// history：先前每輪的文字（使用者回報 + 你的指示），只有最新一輪附截圖。
-    static func nextStep(goal: String, history: [(role: String, text: String)],
-                         screenshotBase64: String, userNote: String) async throws -> GuideStep {
-        guard let key = APIKeyStore.load() else { throw GuideError.noAPIKey }
+    /// 從 Claude 的回答文字中取出 JSON（容忍前後有多餘文字或 ``` 圍欄）
+    static func parse(_ text: String) throws -> GuideStep {
+        guard let s = text.firstIndex(of: "{"), let e = text.lastIndex(of: "}"), s < e,
+              let step = try? JSONDecoder().decode(GuideStep.self, from: Data(text[s...e].utf8))
+        else { throw GuideError.badResponse(String(text.prefix(300))) }
+        return step
+    }
+}
 
-        var messages: [[String: Any]] = [["role": "user", "content": "我的目標：\(goal)"]]
-        for h in history { messages.append(["role": h.role, "content": h.text]) }
-        // 合併連續同角色訊息，避免 API 拒絕
-        messages = merge(messages)
-        let latest: [[String: Any]] = [
-            ["type": "image", "source": ["type": "base64", "media_type": "image/jpeg", "data": screenshotBase64]],
-            ["type": "text", "text": userNote.isEmpty ? "這是我現在的畫面，請告訴我下一步。" : userNote]
-        ]
-        if messages.last?["role"] as? String == "user" {
-            var last = messages.removeLast()
-            let prev = last["content"] as? String ?? ""
-            last["content"] = [["type": "text", "text": prev]] + latest
-            messages.append(last)
-        } else {
-            messages.append(["role": "user", "content": latest])
-        }
-
-        var req = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
-        req.httpMethod = "POST"
-        req.setValue(key, forHTTPHeaderField: "x-api-key")
-        req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        req.setValue("application/json", forHTTPHeaderField: "content-type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: [
-            "model": model, "max_tokens": 600, "system": system, "messages": messages
-        ])
-
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
-            throw GuideError.badResponse(String(data: data, encoding: .utf8) ?? "HTTP error")
-        }
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let blocks = root["content"] as? [[String: Any]],
-              let text = blocks.first(where: { $0["type"] as? String == "text" })?["text"] as? String,
-              let s = text.firstIndex(of: "{"), let e = text.lastIndex(of: "}")
-        else { throw GuideError.badResponse(String(data: data, encoding: .utf8) ?? "") }
-        do {
-            return try JSONDecoder().decode(GuideStep.self, from: Data(text[s...e].utf8))
-        } catch {
-            throw GuideError.badResponse(text)
-        }
+/// 透過本機已登入的 Claude Code 指令（`claude -p`）提問，使用訂閱額度，不需要 API Key。
+enum ClaudeCLI {
+    static func locate() async -> Bool {
+        let out = try? await shell(["-lc", "command -v claude"])
+        return !(out ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private static func merge(_ msgs: [[String: Any]]) -> [[String: Any]] {
-        var out: [[String: Any]] = []
-        for m in msgs {
-            if let last = out.last, last["role"] as? String == m["role"] as? String,
-               let a = last["content"] as? String, let b = m["content"] as? String {
-                out[out.count - 1]["content"] = a + "\n" + b
-            } else { out.append(m) }
-        }
-        return out
+    static func ask(prompt: String, workDir: URL) async throws -> String {
+        let raw = try await shell(["-lc", "exec claude \"$@\"", "_",
+                                   "-p", prompt, "--output-format", "json",
+                                   "--allowedTools", "Read", "--max-turns", "4",
+                                   "--append-system-prompt", ClaudeClient.system],
+                                  cwd: workDir)
+        guard let obj = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any],
+              let result = obj["result"] as? String else { throw GuideError.badResponse(String(raw.prefix(300))) }
+        return result
+    }
+
+    private static func shell(_ args: [String], cwd: URL? = nil) async throws -> String {
+        try await Task.detached {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            p.arguments = args
+            p.currentDirectoryURL = cwd
+            p.standardInput = FileHandle.nullDevice
+            let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice
+            try p.run()
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            return String(data: data, encoding: .utf8) ?? ""
+        }.value
     }
 }

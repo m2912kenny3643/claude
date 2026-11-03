@@ -3,22 +3,18 @@
 macOS 桌面小精靈：你說想做什麼，它看你的螢幕、一次教一步，並在畫面上圈出要點的位置。
 
 ## 執行（在你的 Mac 上）
-需要 macOS 13+（Intel 或 Apple Silicon）、Xcode 15+ 或 Swift 5.9 工具鏈。
+不需要 API Key。需要 macOS 13+（Intel 或 Apple Silicon）。
 
-```bash
-swift run
-```
-或 `open Package.swift` 用 Xcode 執行。
+- **自動模式**：Mac 上有安裝並登入 Claude Code（終端機輸入 `claude` 可用），小精靈會用你的 Claude 訂閱額度。
+- **手動模式**：沒有 `claude` 指令時，按「複製提示詞 / 複製截圖」貼到 claude.ai，再按「貼上回答」。
 
-1. 第一次啟動輸入 Anthropic API Key（存 Keychain，或設環境變數 `ANTHROPIC_API_KEY`）。
-2. 系統設定 → 隱私權與安全性 → **螢幕錄製**，允許終端機（或 Xcode / 打包後的 app）。授權後需重新啟動。
-3. 選單列 ✨ 可顯示/隱藏小精靈（⇧⌘G）。
+系統設定 → 隱私權與安全性 → **螢幕錄製** 要允許小精靈，授權後重新啟動。選單列 ✨ 可顯示/隱藏（⇧⌘G）。
 
 ## 運作方式
-截圖(ScreenCaptureKit，排除自己的視窗) → Claude 視覺判斷下一步 + 目標座標 → 全螢幕透明 overlay 畫脈動光圈 → 使用者操作後按「下一步」重複。
+截圖(排除自己的視窗) → Claude 視覺判斷下一步 + 目標座標 → 全螢幕透明 overlay 畫脈動光圈 → 使用者操作後按「下一步」重複。
 
 ## 隱私
-截圖只在你按「開始/下一步」時送出到 Anthropic API，不會背景持續監看。
+截圖只在你按「開始/下一步」時送出，不會背景持續監看。
 
 ## 用 GitHub Actions 雲端編譯（Intel Mac / macOS 13）
 推送後到 repo 的 Actions 頁籤 → 最新的 “Build macOS app” → 下載 `ClaudeGuide-intel` 。解壓後：

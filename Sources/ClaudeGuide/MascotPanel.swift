@@ -56,6 +56,15 @@ struct MascotView: View {
             if session.phase == .failed { Button("重試") { session.next() } }
         case .thinking:
             ProgressView().controlSize(.small)
+        case .manual:
+            HStack {
+                if !session.hasSentPrompt { Button("複製提示詞") { session.copyPrompt() } }
+                Button("複製截圖") { session.copyScreenshot() }
+                Button("貼上回答") { session.pasteReply() }
+                Spacer()
+                Button("結束") { session.reset() }
+            }
+            Link("開啟 claude.ai", destination: URL(string: "https://claude.ai/new")!).font(.caption)
         case .showing:
             HStack {
                 Button("我做好了，下一步") { session.next() }
